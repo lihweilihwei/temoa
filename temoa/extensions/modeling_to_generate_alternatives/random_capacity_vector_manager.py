@@ -33,8 +33,10 @@ from logging import getLogger
 from pathlib import Path
 from queue import Queue
 from typing import Iterable
+import os
 
 import numpy as np
+import pandas as pd # for emergency data dumping
 from matplotlib import pyplot as plt
 from pyomo.core import Expression, Var, value, Objective, quicksum
 
@@ -43,6 +45,7 @@ from temoa.extensions.modeling_to_generate_alternatives.hull import Hull
 from temoa.extensions.modeling_to_generate_alternatives.mga_constants import MgaWeighting
 from temoa.extensions.modeling_to_generate_alternatives.vector_manager import VectorManager
 from temoa.temoa_model.temoa_model import TemoaModel
+from temoa.temoa_model.temoa_rules import loan_cost
 
 logger = getLogger(__name__)
 
@@ -64,7 +67,7 @@ class DefaultItem:
 default_cat = DefaultItem('DEFAULT')
 
 
-class TechActivityVectorManager(VectorManager):
+class RandomCapacityVectorManager(VectorManager):
     def __init__(
         self,
         conn: sqlite3.Connection,
@@ -72,6 +75,7 @@ class TechActivityVectorManager(VectorManager):
         weighting: MgaWeighting,
         optimal_cost: float,
         cost_relaxation: float,
+        seed: int | None = 2025,
     ):
         self.completed_solves = 0
         self.conn = conn
@@ -80,9 +84,15 @@ class TechActivityVectorManager(VectorManager):
         self.cost_relaxation = cost_relaxation
         self.generation_index = 1  # index of how many models generated to couple inputs-outputs
 
+        # Set seed for reproducibility
+        np.random.seed(seed)
+        logger.info(f'numpy random seed: {seed}')
+
         # {category : [technology, ...]}
         # the number of keys in this are the dimension of the hull
         self.category_mapping: dict | None = None
+
+        self.random_vector_table: pd.DataFrame = None
 
         # {technology: [number of associated variables, ...]}
         self.technology_size: dict[str, int] = defaultdict(int)
@@ -95,20 +105,31 @@ class TechActivityVectorManager(VectorManager):
 
         if weighting != MgaWeighting.HULL_EXPANSION:
             raise NotImplementedError(
-                'Tech Activity currently only works with Hull Expansion weighting'
+                'Random Capacity currently only works with Hull Expansion weighting'
             )
         self.hull_points: np.ndarray | None = None
         self.hull: Hull | None = None
 
+        # include minimise/maximise basis (sum of category) runs?
+        # Default: false due to instability
+        self.include_min = False # -> These runs can be very unstable due to degenerate solutions
+        self.include_max = False # -> These runs can also be a bit unstable due to flat solution spaces
+        if self.include_min or self.include_max: logger.info('Including min/max basis coefficient vectors.')
+
+        # Should we save the random vector objectives each run and reuse them?
+        # allows repeatable MGA vectors if categories dont change
+        self.reuse_random_vectors = True
+
         self.initialize()
         self.basis_coefficients: Queue[np.ndarray] = self._generate_basis_coefficients(
-            self.category_mapping, self.technology_size
+            self.category_mapping, self.technology_size, self.include_min, self.include_max
         )
 
-        # monitor/report the size of the hull for each new point.  May cause some slowdown due to
-        # hull re-computes, but it seems quite fast RN.
+        # monitor/report the size of the hull for each new point.
+        # only works for very small number of categories, scales poorly
         self.hull_monitor = True
         self.perf_data = {}
+        
 
     def initialize(self) -> None:
         """
@@ -118,30 +139,39 @@ class TechActivityVectorManager(VectorManager):
         self.basis_coefficients = []
         techs_implemented = self.base_model.tech_all  # some may have been culled by source tracing
         logger.debug('Initializing Technology Vectors data elements')
-        raw = self.conn.execute('SELECT category, tech FROM Technology').fetchall()
+        raw = self.conn.execute('SELECT category, tech FROM Technology ORDER BY tech').fetchall()
         self.category_mapping = defaultdict(list)
         for row in raw:
             cat, tech = row
             if cat in {None, ''}:
-                cat = default_cat # Why?
+                # Ignore uncategorised (None or blank) technologies
+                #cat = default_cat # devnote: Why? This would clump every uncategorised tech into one giant category for MGA
+                continue
             if tech in techs_implemented:
                 self.category_mapping[cat].append(tech)
                 self.variable_index_mapping[tech] = defaultdict(list)
 
+        if len(self.category_mapping) == 0:
+            msg = "No categories were set in the Technology table!"
+            logger.error(msg)
+            raise RuntimeError(msg)
+        else:
+            print(f"Categories and number of technologies per category: {[(c, len(t)) for c, t in self.category_mapping.items()]}")
+
+        if len(self.category_mapping) > 6:
+            logger.info('More than 6 technology categories detected. Setting hull_monitor to False.')
+            self.hull_monitor = False
+
         for cat in self.category_mapping:
             logger.debug('Category %s members: %d', cat, len(self.category_mapping[cat]))
 
-        # now pull the flow variables and map them
-        for idx in self.base_model.activeFlow_rpsditvo:
-            tech = idx[5]
+        # now pull new capacity variables
+        for idx in self.base_model.NewCapacityVar_rtv:
+            if idx[2] not in self.base_model.time_optimize: continue
+            tech = idx[1]
             if tech not in self.variable_index_mapping.keys(): continue
             self.technology_size[tech] += 1
-            self.variable_index_mapping[tech][self.base_model.V_FlowOut.name].append(idx)
-        for idx in self.base_model.activeFlow_rpitvo:
-            tech = idx[3]
-            if tech not in self.variable_index_mapping.keys(): continue
-            self.technology_size[tech] += 1
-            self.variable_index_mapping[tech][self.base_model.V_FlowOutAnnual.name].append(idx)
+            self.variable_index_mapping[tech][self.base_model.V_NewCapacity.name].append(idx)
         logger.debug('Catalogued %d Technology Variables', sum(self.technology_size.values()))
 
     @property
@@ -151,51 +181,86 @@ class TechActivityVectorManager(VectorManager):
     def group_variable_names(self, tech) -> list[Var]:
         return list(self.category_mapping.keys())
 
+    def random_coefficients(self, n: int):
+        return np.random.random(n) - 0.5
+    
     def random_input_vector_model(self) -> TemoaModel:
         new_model = self.base_model.clone()
         new_model.name = self.new_model_name()
-        var_vec = self.var_vector(new_model)
-        coeffs = np.random.random(len(var_vec))
-        coeffs /= sum(coeffs)
-        obj_expr = quicksum(c * v for c, v in zip(coeffs, var_vec))
+        var_vec, cost_vec = self.var_vector(new_model)
+        
+        # --------------------------------------------------------------------------------------------------
+        # This block only if saving and reusing random vectors
+        if self.reuse_random_vectors:
+            if self.random_vector_table is None: self.random_vector_table = self.get_random_vectors_cache()
+            
+            df = self.random_vector_table
+            file = 'temoa/extensions/modeling_to_generate_alternatives/mga_random_vectors.csv'
+            if df is None:
+                print("Created random vector table.")
+                coeffs = self.random_coefficients(len(var_vec))
+                df = pd.DataFrame(index=[str(var) for var in var_vec], data=coeffs, columns=[new_model.name])
+
+            if new_model.name in df.columns:
+                print("Running a random vector from table.")
+                coeffs = np.array([df[new_model.name][str(var)] for var in var_vec])
+            else:
+                print("Running a new random vector.")
+                coeffs = self.random_coefficients(len(var_vec))
+                df_2 = pd.DataFrame(index=[str(var) for var in var_vec], data=coeffs, columns=[new_model.name])
+                df = pd.concat([df, df_2], axis='columns')
+
+            df.to_csv(file)
+            df.to_csv(Path(get_OUTPUT_PATH(), 'mga_random_vectors.csv'))
+
+            self.random_vector_table = df
+        # --------------------------------------------------------------------------------------------------
+        else:
+            coeffs = self.random_coefficients(len(var_vec)) # If we aren't saving and reusing the random vectors
+            
+        coeffs /= sum(abs(coeffs))
+        obj_expr = quicksum(c * e for c, e in zip(coeffs, cost_vec))
         new_model.obj = Objective(expr=obj_expr)
+
         return new_model
+    
+    def get_random_vectors_cache(self) -> pd.DataFrame:
+        file = 'temoa/extensions/modeling_to_generate_alternatives/mga_random_vectors.csv'
+        if os.path.isfile(file):
+            print("Got random vector table from file.")
+            return pd.read_csv(file, index_col=0)
+        else:
+            return None
 
     def model_generator(self) -> Iterator[TemoaModel]:
         """
-        Generate instances to solve.  Start with the basis vectors, then ...
+        Generate instances to solve. Start with the basis vectors, then ...
         :return: a TemoaModel instance
         """
-        # traverse the basis vectors first
+
+        """ # Re-run the base model to get it in the dataset
         new_model = self.base_model.clone()
-        obj_vector = self._make_basis_objective_vector(new_model)
-        while obj_vector is not None:
-            new_model.obj = Objective(expr=obj_vector)
-            new_model.name = self.new_model_name()
-            yield new_model
+        new_model.name = self.new_model_name()
+        print("Rerunning base model")
+        yield new_model """
+
+        if (self.include_min or self.include_max):
+            # traverse the basis vectors first
             new_model = self.base_model.clone()
             obj_vector = self._make_basis_objective_vector(new_model)
+            while obj_vector is not None:
+                print("Running a basis vector")
+                new_model.obj = Objective(expr=obj_vector)
+                new_model.name = self.new_model_name()
+                yield new_model
+                new_model = self.base_model.clone()
+                obj_vector = self._make_basis_objective_vector(new_model)
 
-        # if asking for more, we *should* have enough data to create a good hull now...
-        while self.completed_solves <= 2 * len(self.category_mapping):
-            # some of the basis vectors must have "crashed" or timed out...
-            # supply random vectors until we have sufficient number of solved models to make hull
-            logger.info(
-                'Adding random vectors to augment the basis.  Some basis solves may have crashed...'
-            )
-            yield self.random_input_vector_model()
-
-        logger.info('Generating hull points')
-        self.regenerate_hull()
-        # now we can run until told to quit or fail to make a new vector
+        # Random only
         while True:
-            new_model = self.base_model.clone()
-            new_model.name = self.new_model_name()
-            v = self._next_objective_vector(M=new_model)
-            if v is None:
-                yield None
-            new_model.obj = Objective(expr=v)
-            yield new_model
+            #try: self.regenerate_hull()
+            #except: pass
+            yield self.random_input_vector_model()
 
     def new_model_name(self) -> str:
         """produce a new name with updated index suffix"""
@@ -223,15 +288,30 @@ class TechActivityVectorManager(VectorManager):
                         value(model_var[idx]) for idx in self.variable_index_mapping[tech][var_name]
                     )
             res.append(element)
-
+        
+        # This block appends all variable values, not summed by category
+        # Takes forever to calculate the hull volume
+        """ self.completed_solves += 1
+        res = []
+        for cat in self.category_mapping:
+            element = 0
+            for tech in self.category_mapping[cat]:
+                for var_name in self.variable_index_mapping[tech]:
+                    model_var = M.find_component(var_name)
+                    if not isinstance(model_var, Var):
+                        raise RuntimeError('hooked a bad fish')
+                    res.extend(value(model_var[idx]) for idx in self.variable_index_mapping[tech][var_name]) """
+        
         # add it to the hull points
         hull_point = np.array(res)
+        hull_point[hull_point < 0.01] = 0
         if self.hull_points is None:
             self.hull_points = np.atleast_2d(hull_point)
         else:
             self.hull_points = np.vstack((self.hull_points, hull_point))
         if self.hull_monitor:
             self.tracker()
+
         return res
 
     def stop_resolving(self) -> bool:
@@ -243,6 +323,29 @@ class TechActivityVectorManager(VectorManager):
 
     def group_members(self, group) -> list[str]:
         return self.category_mapping.get(group, [])
+    
+    def loan_costs(self, M: TemoaModel):
+        P_0 = min(M.time_optimize)
+        P_e = M.time_future.last()  # End point of modeled horizon
+        GDR = value(M.GlobalDiscountRate)
+
+        loan_costs = sum(
+            loan_cost(
+                M.V_NewCapacity[r, S_t, S_v],
+                M.CostInvest[r, S_t, S_v],
+                M.LoanAnnualize[r, S_t, S_v],
+                value(M.LoanLifetimeProcess[r, S_t, S_v]),
+                value(M.LifetimeProcess[r, S_t, S_v]),
+                P_0,
+                P_e,
+                GDR,
+                vintage=S_v,
+            )
+            for r, S_t, S_v in M.CostInvest.sparse_iterkeys()
+            if S_v in M.time_optimize
+        )
+
+        return loan_costs
 
     # noinspection PyTypeChecker
     def _make_basis_objective_vector(self, M: TemoaModel) -> Iterable[Expression] | None:
@@ -255,14 +358,16 @@ class TechActivityVectorManager(VectorManager):
             return None
 
         # now we need to roll out a vector of the variables and pair them with coefficients...
-        vars = self.var_vector(M)
+        var_vec, cost_vec = self.var_vector(M)
 
         # verify a unit vector
         err = abs(abs(sum(coeffs)) - 1)
         assert err < 1e-6, 'unit vector size error'
-        expr = sum(c * v for v, c in zip(vars, coeffs) if c != 0)
+        expr = sum(c * e for c, e in zip(coeffs, cost_vec) if c != 0)
+        #expr += 1E-6 * self.loan_costs(M)
         return expr
 
+    # Facet normal vectors
     def _next_objective_vector(self, M: TemoaModel) -> Expression | None:
         if self.coefficient_vector_queue.qsize() <= 3:
             logger.info('running low on input vectors...  refreshing the vectors with new hull')
@@ -288,10 +393,17 @@ class TechActivityVectorManager(VectorManager):
         assert len(obj_vars) == len(coeffs)
         return quicksum(c * v for v, c in zip(obj_vars, coeffs))
 
-    def var_vector(self, M: TemoaModel) -> list[Var]:
+    def var_vector(self, M: TemoaModel) -> tuple[list[Var], list[Expression]]:
         """Produce a properly sequenced array of variables from the current model for use in obj vector"""
-        res = []
+
+        P_0 = min(M.time_optimize)
+        P_e = M.time_future.last()  # End point of modeled horizon
+        GDR = value(M.GlobalDiscountRate)
+
+        vars = []
+        costs = []
         for cat in self.category_mapping:
+            if cat == default_cat: continue
             for tech in self.category_mapping[cat]:
                 for var_name in self.variable_index_mapping[tech]:
                     var = M.find_component(var_name)
@@ -300,8 +412,22 @@ class TechActivityVectorManager(VectorManager):
                             'Failed to retrieve a named variable from the model: %s', var_name
                         )
                     for idx in self.variable_index_mapping[tech][var_name]:
-                        res.append(var[idx])
-        return res
+                        # Iterating over indices that exist in CostInvest and time_optimize
+                        if idx in M.CostInvest.sparse_iterkeys() and idx[2] in M.time_optimize:
+                            vars.append(var[idx])
+                            costs.append(
+                                loan_cost(
+                                    M.V_NewCapacity[idx],
+                                    M.CostInvest[idx],
+                                    M.LoanAnnualize[idx],
+                                    value(M.LoanLifetimeProcess[idx]),
+                                    value(M.LifetimeProcess[idx]),
+                                    P_0,
+                                    P_e,
+                                    GDR,
+                                    vintage=idx[2],
+                                ))
+        return vars, costs
 
     def regenerate_hull(self):
         """make the hull..."""
@@ -325,7 +451,12 @@ class TechActivityVectorManager(VectorManager):
         return self.coefficient_vector_queue.qsize()
 
     @staticmethod
-    def _generate_basis_coefficients(category_mapping: dict, technology_size: dict) -> Queue:
+    def _generate_basis_coefficients (
+        category_mapping: dict,
+        technology_size: dict,
+        include_min: bool,
+        include_max: bool
+    ) -> Queue:
         # Sequentially build the coefficient vector in the order of the categories and associated techs
         q = Queue()
         for selected_cat in category_mapping:
@@ -346,8 +477,8 @@ class TechActivityVectorManager(VectorManager):
 
             entry = np.array(res)
             entry = entry / np.array(np.sum(entry))
-            q.put(entry)  # high value
-            q.put(-entry)  # low value
+            if include_min: q.put(entry)  # +ve value -> minimisation
+            if include_max: q.put(-entry)  # -ve value -> maximisation
 
         return q
 
@@ -356,17 +487,25 @@ class TechActivityVectorManager(VectorManager):
         A little function to track the size of the hull, after it is built initially
         Note:  This hull is a "throw away" and only used for volume calc, but it is pretty quick
         """
-        if self.hull is not None:  # don't try until after first hull is built
-            hull = Hull(self.hull_points)
-            volume = hull.volume
-            logger.info(f'Tracking hull at {volume}')
-            self.perf_data.update({len(self.hull_points): volume})
+        points = self.hull_points[:, np.amax(self.hull_points, axis=0) - np.amin(self.hull_points, axis=0) > 1]
+        pd.DataFrame(points).to_csv(Path(get_OUTPUT_PATH(), 'hull_points.csv'))
+        try: self.hull = Hull(points) # bit of a hack... works when there are enough points...
+        except Exception as e:
+            print(e)
+            return
+        volume = self.hull.volume
+        logger.info(f'Tracking hull at {volume}')
+        self.perf_data.update({len(self.hull_points): volume})
 
     def finalize_tracker(self):
         fout = Path(get_OUTPUT_PATH(), 'hull_performance.png')
         pts = sorted(self.perf_data.keys())
         y = [self.perf_data[pt] for pt in pts]
-        plt.plot(pts, y)
-        plt.xlabel('Iteration')
-        plt.ylabel('N-Dimensional Hull Volume')
-        plt.savefig(str(fout))
+        try:
+            plt.plot(pts, y)
+            plt.xlabel('Iteration')
+            plt.ylabel('N-Dimensional Hull Volume')
+            plt.savefig(str(fout))
+        except Exception as e:
+            print(e)
+            pass

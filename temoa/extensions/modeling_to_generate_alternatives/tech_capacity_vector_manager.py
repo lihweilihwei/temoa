@@ -35,6 +35,7 @@ from queue import Queue
 from typing import Iterable
 
 import numpy as np
+import pandas as pd # for emergency data dumping
 from matplotlib import pyplot as plt
 from pyomo.core import Expression, Var, value, Objective, quicksum
 
@@ -64,7 +65,7 @@ class DefaultItem:
 default_cat = DefaultItem('DEFAULT')
 
 
-class TechActivityVectorManager(VectorManager):
+class TechCapacityVectorManager(VectorManager):
     def __init__(
         self,
         conn: sqlite3.Connection,
@@ -95,7 +96,7 @@ class TechActivityVectorManager(VectorManager):
 
         if weighting != MgaWeighting.HULL_EXPANSION:
             raise NotImplementedError(
-                'Tech Activity currently only works with Hull Expansion weighting'
+                'Tech Capacity currently only works with Hull Expansion weighting'
             )
         self.hull_points: np.ndarray | None = None
         self.hull: Hull | None = None
@@ -107,7 +108,7 @@ class TechActivityVectorManager(VectorManager):
 
         # monitor/report the size of the hull for each new point.  May cause some slowdown due to
         # hull re-computes, but it seems quite fast RN.
-        self.hull_monitor = True
+        self.hull_monitor = False
         self.perf_data = {}
 
     def initialize(self) -> None:
@@ -123,7 +124,7 @@ class TechActivityVectorManager(VectorManager):
         for row in raw:
             cat, tech = row
             if cat in {None, ''}:
-                cat = default_cat # Why?
+                cat = default_cat # TODO Why?
             if tech in techs_implemented:
                 self.category_mapping[cat].append(tech)
                 self.variable_index_mapping[tech] = defaultdict(list)
@@ -131,17 +132,13 @@ class TechActivityVectorManager(VectorManager):
         for cat in self.category_mapping:
             logger.debug('Category %s members: %d', cat, len(self.category_mapping[cat]))
 
-        # now pull the flow variables and map them
-        for idx in self.base_model.activeFlow_rpsditvo:
-            tech = idx[5]
+        # now pull new capacity variables
+        for idx in self.base_model.NewCapacityVar_rtv:
+            if idx[2] not in self.base_model.time_optimize: continue
+            tech = idx[1]
             if tech not in self.variable_index_mapping.keys(): continue
             self.technology_size[tech] += 1
-            self.variable_index_mapping[tech][self.base_model.V_FlowOut.name].append(idx)
-        for idx in self.base_model.activeFlow_rpitvo:
-            tech = idx[3]
-            if tech not in self.variable_index_mapping.keys(): continue
-            self.technology_size[tech] += 1
-            self.variable_index_mapping[tech][self.base_model.V_FlowOutAnnual.name].append(idx)
+            self.variable_index_mapping[tech][self.base_model.V_NewCapacity.name].append(idx)
         logger.debug('Catalogued %d Technology Variables', sum(self.technology_size.values()))
 
     @property
@@ -177,7 +174,8 @@ class TechActivityVectorManager(VectorManager):
             obj_vector = self._make_basis_objective_vector(new_model)
 
         # if asking for more, we *should* have enough data to create a good hull now...
-        while self.completed_solves <= 2 * len(self.category_mapping):
+        # while self.completed_solves <= 2 * len(self.category_mapping):
+        while True:
             # some of the basis vectors must have "crashed" or timed out...
             # supply random vectors until we have sufficient number of solved models to make hull
             logger.info(
@@ -366,7 +364,14 @@ class TechActivityVectorManager(VectorManager):
         fout = Path(get_OUTPUT_PATH(), 'hull_performance.png')
         pts = sorted(self.perf_data.keys())
         y = [self.perf_data[pt] for pt in pts]
-        plt.plot(pts, y)
-        plt.xlabel('Iteration')
-        plt.ylabel('N-Dimensional Hull Volume')
-        plt.savefig(str(fout))
+        try:
+            plt.plot(pts, y)
+            plt.xlabel('Iteration')
+            plt.ylabel('N-Dimensional Hull Volume')
+            plt.savefig(str(fout))
+        except:
+            # Plotting failed
+            # Emergency data dump
+            fout = Path(get_OUTPUT_PATH(), 'hull_performance_emergency_data_dump.csv')
+            df = pd.DataFrame(data=[pts, y])
+            df.to_csv(fout)

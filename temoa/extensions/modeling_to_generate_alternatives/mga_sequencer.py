@@ -37,6 +37,9 @@ from multiprocessing import Queue
 from pathlib import Path
 from queue import Empty
 
+import zipfile
+import os
+
 import pyomo.environ as pyo
 from pyomo.contrib.solver.results import Results
 from pyomo.dataportal import DataPortal
@@ -48,7 +51,6 @@ from temoa.extensions.modeling_to_generate_alternatives.mga_constants import Mga
 from temoa.extensions.modeling_to_generate_alternatives.vector_manager import VectorManager
 from temoa.extensions.modeling_to_generate_alternatives.worker import Worker
 from temoa.temoa_model.hybrid_loader import HybridLoader
-from temoa.temoa_model.model_checking.pricing_check import price_checker
 from temoa.temoa_model.run_actions import build_instance
 from temoa.temoa_model.table_writer import TableWriter
 from temoa.temoa_model.temoa_config import TemoaConfig
@@ -57,8 +59,8 @@ from temoa.temoa_model.temoa_rules import TotalCost_rule
 
 logger = getLogger(__name__)
 
-solver_options_path = Path(
-    PROJECT_ROOT, 'temoa/extensions/modeling_to_generate_alternatives/MGA_solver_options.toml'
+path_to_options_file = Path(
+    PROJECT_ROOT, 'temoa/extensions/modeling_to_generate_alternatives/solver_options.toml'
 )
 
 
@@ -75,19 +77,19 @@ class MgaSequencer:
                 'Recommend selecting source trace in config file.'
             )
         if config.save_lp_file:
-            logger.warning('Saving LP file is disabled during MGA runs.')
+            logger.info('Saving LP file is disabled during MGA runs.')
             config.save_lp_file = False
         if config.save_duals:
-            logger.warning('Saving duals is disabled during MGA runs.')
+            logger.info('Saving duals is disabled during MGA runs.')
             config.save_duals = False
         if config.save_excel:
-            logger.warning('Saving excel is disabled during MGA runs.')
+            logger.info('Saving excel is disabled during MGA runs.')
             config.save_excel = False
         self.config = config
 
         # read in the options
         try:
-            with open(solver_options_path, 'rb') as f:
+            with open(path_to_options_file, 'rb') as f:
                 all_options = tomllib.load(f)
             s_options = all_options.get(self.config.solver_name, {})
             logger.info('Using solver options: %s', s_options)
@@ -159,10 +161,6 @@ class MgaSequencer:
         instance: TemoaModel = build_instance(
             loaded_portal=data_portal, model_name=self.config.scenario, silent=self.config.silent
         )
-        if self.config.price_check:
-            good_prices = price_checker(instance)
-            if not good_prices and not self.config.silent:
-                print('Warning:  Cost anomalies discovered.  Check log file for details.')
         # tag the instance by name, so we can sort out the multiple results...
         instance.name = '-'.join((self.config.scenario, '0'))
 
@@ -170,7 +168,8 @@ class MgaSequencer:
         tic = datetime.now()
         #   ============ First Solve ============
         #  Note:  We *exclude* the worker_solver_options here to get a more precise base cost
-        res: Results = self.opt.solve(instance)
+        self.opt.options = self.worker_solver_options
+        res: Results = self.opt.solve(instance, tee=True)
         toc = datetime.now()
         elapsed = toc - tic
         self.solve_count += 1
@@ -210,11 +209,8 @@ class MgaSequencer:
         )
 
         # 5.  Set up the Workers
-        num_workers = self.num_workers
         work_queue = Queue(1)  # restrict the queue to hold just 1 models in it max
-        result_queue = Queue(
-            num_workers + 1
-        )  # must be able to hold a shutdown signal from all workers at once!
+        result_queue = Queue(2)
         log_queue = Queue(50)
         # make workers
         workers = []
@@ -222,6 +218,7 @@ class MgaSequencer:
             'solver_name': self.config.solver_name,
             'solver_options': self.worker_solver_options,
         }
+        num_workers = self.num_workers
         # construct path for the solver logs
         s_path = Path(get_OUTPUT_PATH(), 'solver_logs')
         if not s_path.exists():
@@ -259,6 +256,7 @@ class MgaSequencer:
                 # print('no result')
             if next_result is not None:
                 vector_manager.process_results(M=next_result)
+                #vector_manager.finalize_tracker()
                 self.process_solve_results(next_result)
                 logger.info('Solve count: %d', self.solve_count)
                 self.solve_count += 1
@@ -287,8 +285,6 @@ class MgaSequencer:
         if self.verbose:
             print('shutting it down')
         for _ in workers:
-            if self.verbose:
-                print('shutdown sent')
             work_queue.put('ZEBRA')  # shutdown signal
 
         # 7b.  Keep pulling results from the queue to empty it out
@@ -338,9 +334,17 @@ class MgaSequencer:
         # 8. Wrap it up
         vector_manager.finalize_tracker()
 
+        # save the database as a zipfile in the output directory
+        # always have an exact copy of the database attached to the results
+        sqlite_database = self.config.output_database
+        zip_database = self.config.output_path / (self.config.output_database.stem + '.zip')
+        zip = zipfile.ZipFile(zip_database, "w", compression=zipfile.ZIP_DEFLATED)
+        zip.write(sqlite_database, arcname=os.path.basename(sqlite_database))
+        zip.close()
+
     def solve_instance(self, instance: TemoaModel) -> bool:
         tic = datetime.now()
-        res = self.opt.solve(instance)
+        res = self.opt.solve(instance, tee=True)
         toc = datetime.now()
         elapsed = toc - tic
         status = res['Solver'].termination_condition
