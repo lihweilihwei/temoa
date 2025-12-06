@@ -39,7 +39,11 @@ from queue import Empty
 
 import zipfile
 import os
+import csv
+import pandas as pd
 
+from pyomo.core import Objective
+from pyomo.repn import generate_standard_repn
 import pyomo.environ as pyo
 from pyomo.contrib.solver.results import Results
 from pyomo.dataportal import DataPortal
@@ -137,6 +141,9 @@ class MgaSequencer:
         self.writer = TableWriter(self.config)
         self.writer.clear_scenario()
         self.verbose = False  # for troubleshooting
+
+        self.objective_coefficients = pd.DataFrame()  # Store all objective coefficients
+        self.obj_csv_path = config.output_path / 'mga_objective_coefficients.csv'
 
         logger.info(
             'Initialized MGA sequencer with MGA Axis %s and weighting %s',
@@ -369,6 +376,36 @@ class MgaSequencer:
         self.seen_instance_indices.add(idx)
         self.writer.write_capacity_tables(M=instance, iteration=idx)
         self.writer.write_summary_flow(instance, iteration=idx)
+
+        # Extract and save objective function coefficients (default in Pyomo: minimize)
+        coeffs = self.extract_objective_coefficients(instance)
+        if coeffs:
+            # Add as a new column to the dataframe
+            self.objective_coefficients[instance.name] = pd.Series(coeffs)
+            # Write incrementally to CSV
+            self.objective_coefficients.to_csv(self.obj_csv_path)
+            logger.debug(f'Saved objective coefficients for {instance.name}')
+
+    def extract_objective_coefficients(self, instance: TemoaModel) -> dict:
+        """
+        Extract coefficients from the linear objective expression
+        :param instance: The model instance
+        :return: Dictionary mapping variable names to coefficients
+        """
+        obj = instance.component('obj')
+        if obj is None or not isinstance(obj, Objective):
+            logger.warning(f'No objective found for instance {instance.name}')
+            return {}
+        
+        # Generate standard linear representation
+        repn = generate_standard_repn(obj.expr)
+        
+        # Build dictionary of var: coeff
+        coeffs = {}
+        for var, coeff in zip(repn.linear_vars, repn.linear_coefs):
+            coeffs[str(var)] = float(coeff)
+        
+        return coeffs
 
     def __del__(self):
         self.con.close()
