@@ -35,7 +35,6 @@ from queue import Queue
 from typing import Iterable
 
 import numpy as np
-import pandas as pd # for emergency data dumping
 from matplotlib import pyplot as plt
 from pyomo.core import Expression, Var, value, Objective, quicksum
 
@@ -62,10 +61,11 @@ class DefaultItem:
 
 
 # just a convenience to have something other than a None item for placeholder
+# for use in categories listings for categories that are empty in the model
 default_cat = DefaultItem('DEFAULT')
 
 
-class TechCapacityVectorManager(VectorManager):
+class TechActivityVectorManager(VectorManager):
     def __init__(
         self,
         conn: sqlite3.Connection,
@@ -108,7 +108,7 @@ class TechCapacityVectorManager(VectorManager):
 
         # monitor/report the size of the hull for each new point.  May cause some slowdown due to
         # hull re-computes, but it seems quite fast RN.
-        self.hull_monitor = False
+        self.hull_monitor = True
         self.perf_data = {}
 
     def initialize(self) -> None:
@@ -124,7 +124,7 @@ class TechCapacityVectorManager(VectorManager):
         for row in raw:
             cat, tech = row
             if cat in {None, ''}:
-                cat = default_cat # TODO Why?
+                cat = default_cat
             if tech in techs_implemented:
                 self.category_mapping[cat].append(tech)
                 self.variable_index_mapping[tech] = defaultdict(list)
@@ -132,13 +132,15 @@ class TechCapacityVectorManager(VectorManager):
         for cat in self.category_mapping:
             logger.debug('Category %s members: %d', cat, len(self.category_mapping[cat]))
 
-        # now pull new capacity variables
-        for idx in self.base_model.NewCapacityVar_rtv:
-            if idx[2] not in self.base_model.time_optimize: continue
-            tech = idx[1]
-            if tech not in self.variable_index_mapping.keys(): continue
+        # now pull the flow variables and map them
+        for idx in self.base_model.activeFlow_rpsditvo:
+            tech = idx[5]
             self.technology_size[tech] += 1
-            self.variable_index_mapping[tech][self.base_model.V_NewCapacity.name].append(idx)
+            self.variable_index_mapping[tech][self.base_model.V_FlowOut.name].append(idx)
+        for idx in self.base_model.activeFlow_rpitvo:
+            tech = idx[3]
+            self.technology_size[tech] += 1
+            self.variable_index_mapping[tech][self.base_model.V_FlowOutAnnual.name].append(idx)
         logger.debug('Catalogued %d Technology Variables', sum(self.technology_size.values()))
 
     @property
@@ -174,8 +176,7 @@ class TechCapacityVectorManager(VectorManager):
             obj_vector = self._make_basis_objective_vector(new_model)
 
         # if asking for more, we *should* have enough data to create a good hull now...
-        # while self.completed_solves <= 2 * len(self.category_mapping):
-        while True:
+        while self.completed_solves <= 2 * len(self.category_mapping):
             # some of the basis vectors must have "crashed" or timed out...
             # supply random vectors until we have sufficient number of solved models to make hull
             logger.info(
@@ -283,6 +284,10 @@ class TechCapacityVectorManager(VectorManager):
 
         obj_vars = self.var_vector(M)
 
+        # export obj_vars and coeffs to log file for debugging. Warning: can be very large
+        #obj_vars_coeffs_str = '; '.join(f'{str(var)}:{coeff}' for var, coeff in zip(obj_vars, coeffs))
+        #logger.info(f'Objective Vector: {obj_vars_coeffs_str}')
+
         assert len(obj_vars) == len(coeffs)
         return quicksum(c * v for v, c in zip(obj_vars, coeffs))
 
@@ -364,14 +369,7 @@ class TechCapacityVectorManager(VectorManager):
         fout = Path(get_OUTPUT_PATH(), 'hull_performance.png')
         pts = sorted(self.perf_data.keys())
         y = [self.perf_data[pt] for pt in pts]
-        try:
-            plt.plot(pts, y)
-            plt.xlabel('Iteration')
-            plt.ylabel('N-Dimensional Hull Volume')
-            plt.savefig(str(fout))
-        except:
-            # Plotting failed
-            # Emergency data dump
-            fout = Path(get_OUTPUT_PATH(), 'hull_performance_emergency_data_dump.csv')
-            df = pd.DataFrame(data=[pts, y])
-            df.to_csv(fout)
+        plt.plot(pts, y)
+        plt.xlabel('Iteration')
+        plt.ylabel('N-Dimensional Hull Volume')
+        plt.savefig(str(fout))

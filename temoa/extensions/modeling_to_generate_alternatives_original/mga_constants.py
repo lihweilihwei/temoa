@@ -33,11 +33,9 @@ from enum import Enum
 @enum.unique
 class MgaAxis(Enum):
     TECH_CAPACITY = 1
-    TECH_CATEGORY_ACTIVITY = 2
-    TECH_CATEGORY_CAPACITY = 3
-    RANDOM_TECH_CAPACITY = 4
-    RANDOM_TECH_ACTIVITY = 5
-    EMISSION_ACTIVITY = 6
+    TECH_CATEGORY_CAPACITY = 2
+    TECH_CATEGORY_ACTIVITY = 3
+    EMISSION_ACTIVITY = 4
 
 
 @enum.unique

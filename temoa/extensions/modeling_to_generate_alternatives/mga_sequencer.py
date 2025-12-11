@@ -131,6 +131,10 @@ class MgaSequencer:
         logger.info('Set MGA time limit hours to: %0.1f', self.time_limit_hrs)
         self.cost_epsilon = config.mga_inputs.get('cost_epsilon', 0.05)
         logger.info('Set MGA cost (relaxation) epsilon to: %0.3f', self.cost_epsilon)
+        
+        # Optional parameter: write OutputFlowOut for each iteration
+        self.summarize_output_flow = config.mga_inputs.get('summarize_output_flow', True)
+        if not self.summarize_output_flow: logger.info('Will not write OutputFlowOutSummary. Writing detailed OutputFlowOut instead.')
 
         # internal records
         self.solve_count = 0
@@ -190,7 +194,7 @@ class MgaSequencer:
         # record the 0-solve in all tables
         self.writer.write_results(instance, iteration=0)
         self.writer.make_summary_flow_table()  # make the flow summary table, if it doesn't exist
-        self.writer.write_summary_flow(instance, iteration=0)
+        self.writer.write_summary_flow(instance, iteration=0, summarize_output_flow=self.summarize_output_flow)
 
         # 3a. Capture cost and make it a constraint
         tot_cost = pyo.value(instance.TotalCost)
@@ -375,7 +379,7 @@ class MgaSequencer:
             raise ValueError('Instance index already seen.  Likely coding error')
         self.seen_instance_indices.add(idx)
         self.writer.write_capacity_tables(M=instance, iteration=idx)
-        self.writer.write_summary_flow(instance, iteration=idx)
+        self.writer.write_summary_flow(instance, iteration=idx, summarize_output_flow=self.summarize_output_flow)
 
         # Extract and save objective function coefficients (default in Pyomo: minimize)
         coeffs = self.extract_objective_coefficients(instance)

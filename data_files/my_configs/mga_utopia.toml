@@ -55,7 +55,7 @@ neos = false
 # solver (Mandatory)
 # Depending on what client machine has installed.
 #  [cbc, appsi_highs, gurobi, cplex, ...]
-solver_name = "cbc"
+solver_name = "gurobi"
 
 # ------------------------------------
 #             OUTPUTS
@@ -69,7 +69,7 @@ save_excel = false
 save_duals = false
 
 # save a copy of the pyomo-generated lp file(s) to the outputs folder (maybe a large file(s)!)
-save_lp_file = false
+save_lp_file = true
 
 # ------------------------------------
 #          MODEL PARAMETERS
@@ -118,11 +118,11 @@ reserve_margin = 'static'
 [MGA]
 # see notes on these in the extensions/modeling_to_generate_alternatives folder readme.txt
 cost_epsilon = 0.03    # propotional relaxation on optimal cost (ex: 0.05 = bound at 105% of original optimal cost)
-iteration_limit = 20   # max iterations to perform
+iteration_limit = 5   # max iterations to perform (was 20)
 time_limit_hrs = 1     # max time
-axis = "tech_category_activity"   # use the tech activity Manager to control exploration based on categories in Tech
+axis = "random_tech_capacity"   # 'tech_category_activity' use the tech activity Manager to control exploration based on categories in Tech
 weighting = "hull_expansion"  # use a convex hull expansion algorithm to weight exploration
-
+summarize_output_flow = false  # Optional: Summarize flows by summing over season and tod in OutputFlowOutSummary? Else, save outputs to OutputFlowOut. Default: true
 
 [myopic]
 view_depth = 2   # number of periods seen/analyzed per iteration
