@@ -20,7 +20,7 @@
 !CHANGELOG.md
 !CONTRIBUTING.md
 !.pre-commit-config.yaml
-
+!run_temoa.py    # Lih Wei's convenience script for running temoa in for loops
 
 # recursively re-ignore
 __pycache__
