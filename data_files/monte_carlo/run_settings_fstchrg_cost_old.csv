@@ -1,0 +1,6 @@
+run,param,index,mod,value,notes
+1,CostInvest,ON|T_HDV_T_LH_BEV_FSTCHRG_N/T_HDV_T_LH_CHRG_FSTCHRG|*,r,0,no change
+2,CostInvest,ON|T_HDV_T_LH_BEV_FSTCHRG_N/T_HDV_T_LH_CHRG_FSTCHRG|*,r,-0.15,decrease CostInvest of FSTCHRG by 15% across all vintages
+3,CostInvest,ON|T_HDV_T_LH_BEV_FSTCHRG_N/T_HDV_T_LH_CHRG_FSTCHRG|*,r,-0.3,decrease CostInvest of FSTCHRG by 30% across all vintages
+4,CostInvest,ON|T_HDV_T_LH_BEV_FSTCHRG_N/T_HDV_T_LH_CHRG_FSTCHRG|*,r,-0.45,decrease CostInvest of FSTCHRG by 45% across all vintages
+5,CostInvest,ON|T_HDV_T_LH_BEV_FSTCHRG_N/T_HDV_T_LH_CHRG_FSTCHRG|*,r,-0.6,decrease CostInvest of FSTCHRG by 60% across all vintages

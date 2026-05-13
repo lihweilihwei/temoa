@@ -1,0 +1,50 @@
+run,param,index,mod,value,notes
+1,Efficiency,ON|T_h2_hdv_t_lh|T_HDV_T_LH_FCEV_N|*|T_annual_tkm_hdv_t_lh,r,0.3,Induce H2FCET & e-diesel deployment. Increase H2FCET efficiency by 30% across all vintages. Autonomie Low vs High case.
+2,CostInvest,ON|T_H2_HDV_T_LH_REFUEL/I_H2_ELC_ALK/I_H2_ELC_PEM/H2_COMP_100_700/H2_COMP_10_100/H2_STOR_PIPE/H2_STOR_SALT|*,r,-1,Induce H2FCET & e-diesel deployment. Decrease Costs of long-haul H2 supply & e-diesel synthesis by xx% across all vintages
+2,CostFixed,ON|*|T_H2_HDV_T_LH_REFUEL/I_H2_ELC_ALK/I_H2_ELC_PEM/H2_COMP_100_700/H2_COMP_10_100/H2_STOR_PIPE/H2_STOR_SALT|*,r,-1,Induce H2FCET & e-diesel deployment. Decrease Costs of long-haul H2 supply & e-diesel synthesis by xx% across all vintages
+2,CostVariable,ON|*|H2_distribution|*,r,-1,Induce H2FCET & e-diesel deployment. Decrease Costs of long-haul H2 supply & e-diesel synthesis by xx% across all vintages
+2,CostInvest,ON|I_FT_RWGS|*,r,-1,Induce H2FCET & e-diesel deployment. Decrease Costs of long-haul H2 supply & e-diesel synthesis by xx% across all vintages
+2,CostFixed,ON|*|I_FT_RWGS|*,r,-1,Induce H2FCET & e-diesel deployment. Decrease Costs of long-haul H2 supply & e-diesel synthesis by xx% across all vintages
+2,CostVariable,ON|*|I_FT_RWGS|*,r,-1,Induce H2FCET & e-diesel deployment. Decrease Costs of long-haul H2 supply & e-diesel synthesis by xx% across all vintages
+3,CostInvest,ON|T_H2_HDV_T_LH_REFUEL/I_H2_ELC_ALK/I_H2_ELC_PEM/H2_COMP_100_700/H2_COMP_10_100/H2_STOR_PIPE/H2_STOR_SALT|*,r,-0.5,Induce H2FCET & e-diesel deployment. Decrease Costs of long-haul H2 supply & H2FCETs & e-diesel synthesis by xx% across all vintages
+3,CostFixed,ON|*|T_H2_HDV_T_LH_REFUEL/I_H2_ELC_ALK/I_H2_ELC_PEM/H2_COMP_100_700/H2_COMP_10_100/H2_STOR_PIPE/H2_STOR_SALT|*,r,-0.5,Induce H2FCET & e-diesel deployment. Decrease Costs of long-haul H2 supply & H2FCETs & e-diesel synthesis by xx% across all vintages
+3,CostVariable,ON|*|H2_distribution|*,r,-0.5,Induce H2FCET & e-diesel deployment. Decrease Costs of long-haul H2 supply & H2FCETs & e-diesel synthesis by xx% across all vintages
+3,CostInvest,ON|I_FT_RWGS|*,r,-0.5,Induce H2FCET & e-diesel deployment. Decrease Costs of long-haul H2 supply & H2FCETs & e-diesel synthesis by xx% across all vintages
+3,CostFixed,ON|*|I_FT_RWGS|*,r,-0.5,Induce H2FCET & e-diesel deployment. Decrease Costs of long-haul H2 supply & H2FCETs & e-diesel synthesis by xx% across all vintages
+3,CostVariable,ON|*|I_FT_RWGS|*,r,-0.5,Induce H2FCET & e-diesel deployment. Decrease Costs of long-haul H2 supply & H2FCETs & e-diesel synthesis by xx% across all vintages
+3,CostInvest,ON|T_HDV_T_LH_FCEV_N|*,r,-0.5,Induce H2FCET & e-diesel deployment. Decrease Costs of long-haul H2 supply & H2FCETs & e-diesel synthesis by xx% across all vintages
+4,CostInvest,ON|T_H2_HDV_T_LH_REFUEL/I_H2_ELC_ALK/I_H2_ELC_PEM/H2_COMP_100_700/H2_COMP_10_100/H2_STOR_PIPE/H2_STOR_SALT|*,r,-0.75,Induce H2FCET & e-diesel deployment. Decrease Costs of long-haul H2 supply & H2FCETs & e-diesel synthesis by xx% across all vintages
+4,CostFixed,ON|*|T_H2_HDV_T_LH_REFUEL/I_H2_ELC_ALK/I_H2_ELC_PEM/H2_COMP_100_700/H2_COMP_10_100/H2_STOR_PIPE/H2_STOR_SALT|*,r,-0.75,Induce H2FCET & e-diesel deployment. Decrease Costs of long-haul H2 supply & H2FCETs & e-diesel synthesis by xx% across all vintages
+4,CostVariable,ON|*|H2_distribution|*,r,-0.75,Induce H2FCET & e-diesel deployment. Decrease Costs of long-haul H2 supply & H2FCETs & e-diesel synthesis by xx% across all vintages
+4,CostInvest,ON|I_FT_RWGS|*,r,-0.75,Induce H2FCET & e-diesel deployment. Decrease Costs of long-haul H2 supply & H2FCETs & e-diesel synthesis by xx% across all vintages
+4,CostFixed,ON|*|I_FT_RWGS|*,r,-0.75,Induce H2FCET & e-diesel deployment. Decrease Costs of long-haul H2 supply & H2FCETs & e-diesel synthesis by xx% across all vintages
+4,CostVariable,ON|*|I_FT_RWGS|*,r,-0.75,Induce H2FCET & e-diesel deployment. Decrease Costs of long-haul H2 supply & H2FCETs & e-diesel synthesis by xx% across all vintages
+4,CostInvest,ON|T_HDV_T_LH_FCEV_N|*,r,-0.75,Induce H2FCET & e-diesel deployment. Decrease Costs of long-haul H2 supply & H2FCETs & e-diesel synthesis by xx% across all vintages
+5,CostInvest,ON|T_H2_HDV_T_LH_REFUEL/I_H2_ELC_ALK/I_H2_ELC_PEM/H2_COMP_100_700/H2_COMP_10_100/H2_STOR_PIPE/H2_STOR_SALT|*,r,-1,Induce H2FCET & e-diesel deployment. Decrease Costs of long-haul H2 supply & H2FCETs & e-diesel synthesis by xx% across all vintages
+5,CostFixed,ON|*|T_H2_HDV_T_LH_REFUEL/I_H2_ELC_ALK/I_H2_ELC_PEM/H2_COMP_100_700/H2_COMP_10_100/H2_STOR_PIPE/H2_STOR_SALT|*,r,-1,Induce H2FCET & e-diesel deployment. Decrease Costs of long-haul H2 supply & H2FCETs & e-diesel synthesis by xx% across all vintages
+5,CostVariable,ON|*|H2_distribution|*,r,-1,Induce H2FCET & e-diesel deployment. Decrease Costs of long-haul H2 supply & H2FCETs & e-diesel synthesis by xx% across all vintages
+5,CostInvest,ON|I_FT_RWGS|*,r,-1,Induce H2FCET & e-diesel deployment. Decrease Costs of long-haul H2 supply & H2FCETs & e-diesel synthesis by xx% across all vintages
+5,CostFixed,ON|*|I_FT_RWGS|*,r,-1,Induce H2FCET & e-diesel deployment. Decrease Costs of long-haul H2 supply & H2FCETs & e-diesel synthesis by xx% across all vintages
+5,CostVariable,ON|*|I_FT_RWGS|*,r,-1,Induce H2FCET & e-diesel deployment. Decrease Costs of long-haul H2 supply & H2FCETs & e-diesel synthesis by xx% across all vintages
+5,CostInvest,ON|T_HDV_T_LH_FCEV_N|*,r,-1,Induce H2FCET & e-diesel deployment. Decrease Costs of long-haul H2 supply & H2FCETs & e-diesel synthesis by xx% across all vintages
+6,CostInvest,ON|T_HDV_T_LH_BEV_LRGBATT_N|*,r,1,Induce H2FCET & e-diesel deployment. Increase CostInvest of BETs by 2x across all vintages
+6,CostInvest,ON|T_HDV_T_LH_BEV_FSTCHRG_N|*,r,1,Induce H2FCET & e-diesel deployment. Increase CostInvest of BETs by 2x across all vintages
+6,CostInvest,ON|T_HDV_T_LH_BEV_ERDS1_N|*,r,1,Induce H2FCET & e-diesel deployment. Increase CostInvest of BETs by 2x across all vintages
+6,CostInvest,ON|T_HDV_T_LH_BEV_ERDS2_N|*,r,1,Induce H2FCET & e-diesel deployment. Increase CostInvest of BETs by 2x across all vintages
+6,CostInvest,ON|T_HDV_T_LH_BEV_ERDS3_N|*,r,1,Induce H2FCET & e-diesel deployment. Increase CostInvest of BETs by 2x across all vintages
+6,CostInvest,ON|T_HDV_T_LH_BEV_ERDS4_N|*,r,1,Induce H2FCET & e-diesel deployment. Increase CostInvest of BETs by 2x across all vintages
+6,CostInvest,ON|T_HDV_T_LH_BEV_ERDS5_N|*,r,1,Induce H2FCET & e-diesel deployment. Increase CostInvest of BETs by 2x across all vintages
+7,CostInvest,ON|T_HDV_T_LH_BEV_LRGBATT_N|*,r,2,Induce H2FCET & e-diesel deployment. Increase CostInvest of BETs by 3x across all vintages
+7,CostInvest,ON|T_HDV_T_LH_BEV_FSTCHRG_N|*,r,2,Induce H2FCET & e-diesel deployment. Increase CostInvest of BETs by 3x across all vintages
+7,CostInvest,ON|T_HDV_T_LH_BEV_ERDS1_N|*,r,2,Induce H2FCET & e-diesel deployment. Increase CostInvest of BETs by 3x across all vintages
+7,CostInvest,ON|T_HDV_T_LH_BEV_ERDS2_N|*,r,2,Induce H2FCET & e-diesel deployment. Increase CostInvest of BETs by 3x across all vintages
+7,CostInvest,ON|T_HDV_T_LH_BEV_ERDS3_N|*,r,2,Induce H2FCET & e-diesel deployment. Increase CostInvest of BETs by 3x across all vintages
+7,CostInvest,ON|T_HDV_T_LH_BEV_ERDS4_N|*,r,2,Induce H2FCET & e-diesel deployment. Increase CostInvest of BETs by 3x across all vintages
+7,CostInvest,ON|T_HDV_T_LH_BEV_ERDS5_N|*,r,2,Induce H2FCET & e-diesel deployment. Increase CostInvest of BETs by 3x across all vintages
+8,CostInvest,ON|T_HDV_T_LH_BEV_LRGBATT_N|*,r,3,Induce H2FCET & e-diesel deployment. Increase CostInvest of BETs by 4x across all vintages
+8,CostInvest,ON|T_HDV_T_LH_BEV_FSTCHRG_N|*,r,3,Induce H2FCET & e-diesel deployment. Increase CostInvest of BETs by 4x across all vintages
+8,CostInvest,ON|T_HDV_T_LH_BEV_ERDS1_N|*,r,3,Induce H2FCET & e-diesel deployment. Increase CostInvest of BETs by 4x across all vintages
+8,CostInvest,ON|T_HDV_T_LH_BEV_ERDS2_N|*,r,3,Induce H2FCET & e-diesel deployment. Increase CostInvest of BETs by 4x across all vintages
+8,CostInvest,ON|T_HDV_T_LH_BEV_ERDS3_N|*,r,3,Induce H2FCET & e-diesel deployment. Increase CostInvest of BETs by 4x across all vintages
+8,CostInvest,ON|T_HDV_T_LH_BEV_ERDS4_N|*,r,3,Induce H2FCET & e-diesel deployment. Increase CostInvest of BETs by 4x across all vintages
+8,CostInvest,ON|T_HDV_T_LH_BEV_ERDS5_N|*,r,3,Induce H2FCET & e-diesel deployment. Increase CostInvest of BETs by 4x across all vintages

@@ -1,0 +1,8 @@
+run,param,index,mod,value,notes
+1,LimitActivityShare,ON|2050|Wind and solar|Electricity generation|ge,s,0,Wind and solar activity at least 0% of total generation in 2050
+2,LimitActivityShare,ON|2050|Wind and solar|Electricity generation|ge,s,0.5,Wind and solar activity at least 50% of total generation in 2050
+3,LimitActivityShare,ON|2050|Wind and solar|Electricity generation|ge,s,0.6,Wind and solar activity at least 60% of total generation in 2050
+4,LimitActivityShare,ON|2050|Wind and solar|Electricity generation|ge,s,0.7,Wind and solar activity at least 70% of total generation in 2050
+5,LimitActivityShare,ON|2050|Wind and solar|Electricity generation|ge,s,0.8,Wind and solar activity at least 80% of total generation in 2050
+6,LimitActivityShare,ON|2050|Wind and solar|Electricity generation|ge,s,0.9,Wind and solar activity at least 90% of total generation in 2050
+7,LimitActivityShare,ON|2050|Wind and solar|Electricity generation|ge,s,1,Wind and solar activity at least 100% of total generation in 2050

@@ -1,0 +1,8 @@
+run,param,index,mod,value,notes
+1,CostInvest,ON|T_HDV_T_LH_CHRG_FSTCHRG|*,r,-0.7,decrease CostInvest of fast chargers by 70% across all vintages
+2,CostInvest,ON|T_HDV_T_LH_CHRG_FSTCHRG|*,r,-0.75,decrease CostInvest of fast chargers by 75% across all vintages
+3,CostInvest,ON|T_HDV_T_LH_CHRG_FSTCHRG|*,r,-0.8,decrease CostInvest of fast chargers by 80% across all vintages
+4,CostInvest,ON|T_HDV_T_LH_CHRG_FSTCHRG|*,r,-0.85,decrease CostInvest of fast chargers by 85% across all vintages
+5,CostInvest,ON|T_HDV_T_LH_CHRG_FSTCHRG|*,r,-0.9,decrease CostInvest of fast chargers by 90% across all vintages
+6,CostInvest,ON|T_HDV_T_LH_CHRG_FSTCHRG|*,r,-0.95,decrease CostInvest of fast chargers by 95% across all vintages
+7,CostInvest,ON|T_HDV_T_LH_CHRG_FSTCHRG|*,r,-1,decrease CostInvest of fast chargers by 100% across all vintages

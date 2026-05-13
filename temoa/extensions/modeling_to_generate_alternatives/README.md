@@ -19,9 +19,13 @@ larger models
     iteration limit OR time limit is reached.  If using hull expansion as the weighting scheme (default), realize
     that "the magic" of that doesn't start until the hull is built which takes 2x |categories| solves to produce.
     - time_limit_hrs:  Self explanatory.  A backstop for long runs
-    - axis:  The type of manager to use.  Only `tech_category_activity` is currently implemented
-    - weighting:  The type of weighting to use by the manager
-- The `MGA_solver_options.toml` file
+    - axis:  The type of manager to use.  Only the following are currently implemented (see `manager_factory.py`):
+      - `tech_category_activity`
+      - `tech_category_capacity`
+      - `random_tech_activity`
+      - `random_tech_capacity`
+    - weighting:  The type of weighting to use by the manager. Only `hull_expansion` is currently implemented
+- The `solver_options.toml` file
   - Contains solver settings to optimize performance.  These settings are used *after* the first solve, which sets
   the optimized cost.  The "worker" solvers consume and use any options for the chosen solver from this file
   - Contains the number of workers setting.  Some balance must be considered between hardware resources and 

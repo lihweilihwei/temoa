@@ -37,6 +37,13 @@ from multiprocessing import Queue
 from pathlib import Path
 from queue import Empty
 
+import zipfile
+import os
+import csv
+import pandas as pd
+
+from pyomo.core import Objective
+from pyomo.repn import generate_standard_repn
 import pyomo.environ as pyo
 from pyomo.contrib.solver.results import Results
 from pyomo.dataportal import DataPortal
@@ -48,7 +55,6 @@ from temoa.extensions.modeling_to_generate_alternatives.mga_constants import Mga
 from temoa.extensions.modeling_to_generate_alternatives.vector_manager import VectorManager
 from temoa.extensions.modeling_to_generate_alternatives.worker import Worker
 from temoa.temoa_model.hybrid_loader import HybridLoader
-from temoa.temoa_model.model_checking.pricing_check import price_checker
 from temoa.temoa_model.run_actions import build_instance
 from temoa.temoa_model.table_writer import TableWriter
 from temoa.temoa_model.temoa_config import TemoaConfig
@@ -125,6 +131,10 @@ class MgaSequencer:
         logger.info('Set MGA time limit hours to: %0.1f', self.time_limit_hrs)
         self.cost_epsilon = config.mga_inputs.get('cost_epsilon', 0.05)
         logger.info('Set MGA cost (relaxation) epsilon to: %0.3f', self.cost_epsilon)
+        
+        # Optional parameter: write OutputFlowOut for each iteration
+        self.summarize_output_flow = config.mga_inputs.get('summarize_output_flow', True)
+        if not self.summarize_output_flow: logger.info('Will not write OutputFlowOutSummary. Writing detailed OutputFlowOut instead.')
 
         # internal records
         self.solve_count = 0
@@ -135,6 +145,9 @@ class MgaSequencer:
         self.writer = TableWriter(self.config)
         self.writer.clear_scenario()
         self.verbose = False  # for troubleshooting
+
+        self.objective_coefficients = pd.DataFrame()  # Store all objective coefficients
+        self.obj_csv_path = config.output_path / 'mga_objective_coefficients.csv'
 
         logger.info(
             'Initialized MGA sequencer with MGA Axis %s and weighting %s',
@@ -159,10 +172,6 @@ class MgaSequencer:
         instance: TemoaModel = build_instance(
             loaded_portal=data_portal, model_name=self.config.scenario, silent=self.config.silent
         )
-        if self.config.price_check:
-            good_prices = price_checker(instance)
-            if not good_prices and not self.config.silent:
-                print('Warning:  Cost anomalies discovered.  Check log file for details.')
         # tag the instance by name, so we can sort out the multiple results...
         instance.name = '-'.join((self.config.scenario, '0'))
 
@@ -170,7 +179,8 @@ class MgaSequencer:
         tic = datetime.now()
         #   ============ First Solve ============
         #  Note:  We *exclude* the worker_solver_options here to get a more precise base cost
-        res: Results = self.opt.solve(instance)
+        self.opt.options = self.worker_solver_options
+        res: Results = self.opt.solve(instance, tee=True)
         toc = datetime.now()
         elapsed = toc - tic
         self.solve_count += 1
@@ -184,7 +194,7 @@ class MgaSequencer:
         # record the 0-solve in all tables
         self.writer.write_results(instance, iteration=0)
         self.writer.make_summary_flow_table()  # make the flow summary table, if it doesn't exist
-        self.writer.write_summary_flow(instance, iteration=0)
+        self.writer.write_summary_flow(instance, iteration=0, summarize_output_flow=self.summarize_output_flow)
 
         # 3a. Capture cost and make it a constraint
         tot_cost = pyo.value(instance.TotalCost)
@@ -210,11 +220,8 @@ class MgaSequencer:
         )
 
         # 5.  Set up the Workers
-        num_workers = self.num_workers
         work_queue = Queue(1)  # restrict the queue to hold just 1 models in it max
-        result_queue = Queue(
-            num_workers + 1
-        )  # must be able to hold a shutdown signal from all workers at once!
+        result_queue = Queue(2)
         log_queue = Queue(50)
         # make workers
         workers = []
@@ -222,6 +229,7 @@ class MgaSequencer:
             'solver_name': self.config.solver_name,
             'solver_options': self.worker_solver_options,
         }
+        num_workers = self.num_workers
         # construct path for the solver logs
         s_path = Path(get_OUTPUT_PATH(), 'solver_logs')
         if not s_path.exists():
@@ -287,8 +295,6 @@ class MgaSequencer:
         if self.verbose:
             print('shutting it down')
         for _ in workers:
-            if self.verbose:
-                print('shutdown sent')
             work_queue.put('ZEBRA')  # shutdown signal
 
         # 7b.  Keep pulling results from the queue to empty it out
@@ -338,9 +344,17 @@ class MgaSequencer:
         # 8. Wrap it up
         vector_manager.finalize_tracker()
 
+        # save the database as a zipfile in the output directory
+        # always have an exact copy of the database attached to the results
+        sqlite_database = self.config.output_database
+        zip_database = self.config.output_path / (self.config.output_database.stem + '.zip')
+        zip = zipfile.ZipFile(zip_database, "w", compression=zipfile.ZIP_DEFLATED)
+        zip.write(sqlite_database, arcname=os.path.basename(sqlite_database))
+        zip.close()
+
     def solve_instance(self, instance: TemoaModel) -> bool:
         tic = datetime.now()
-        res = self.opt.solve(instance)
+        res = self.opt.solve(instance, tee=True)
         toc = datetime.now()
         elapsed = toc - tic
         status = res['Solver'].termination_condition
@@ -364,7 +378,37 @@ class MgaSequencer:
             raise ValueError('Instance index already seen.  Likely coding error')
         self.seen_instance_indices.add(idx)
         self.writer.write_capacity_tables(M=instance, iteration=idx)
-        self.writer.write_summary_flow(instance, iteration=idx)
+        self.writer.write_summary_flow(instance, iteration=idx, summarize_output_flow=self.summarize_output_flow)
+
+        # Extract and save objective function coefficients (default in Pyomo: minimize)
+        coeffs = self.extract_objective_coefficients(instance)
+        if coeffs:
+            # Add as a new column to the dataframe
+            self.objective_coefficients[instance.name] = pd.Series(coeffs)
+            # Write incrementally to CSV
+            self.objective_coefficients.to_csv(self.obj_csv_path)
+            logger.debug(f'Saved objective coefficients for {instance.name}')
+
+    def extract_objective_coefficients(self, instance: TemoaModel) -> dict:
+        """
+        Extract coefficients from the linear objective expression
+        :param instance: The model instance
+        :return: Dictionary mapping variable names to coefficients
+        """
+        obj = instance.component('obj')
+        if obj is None or not isinstance(obj, Objective):
+            logger.warning(f'No objective found for instance {instance.name}')
+            return {}
+        
+        # Generate standard linear representation
+        repn = generate_standard_repn(obj.expr)
+        
+        # Build dictionary of var: coeff
+        coeffs = {}
+        for var, coeff in zip(repn.linear_vars, repn.linear_coefs):
+            coeffs[str(var)] = float(coeff)
+        
+        return coeffs
 
     def __del__(self):
         self.con.close()
