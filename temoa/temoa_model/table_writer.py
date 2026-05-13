@@ -372,19 +372,20 @@ class TableWriter:
 
         self.con.commit()
 
-    def write_summary_flow(self, M: TemoaModel, iteration: int | None = None):
+    def write_summary_flow(self, M: TemoaModel, iteration: int | None = None, summarize_output_flow: bool = True) -> None:
         """
         This is normally called from MGA (other?)
         iterative solves where capturing the annual summary of flow out is desired vs. flows by season, tod for
         single instances
         :param iteration: the number of the sequential iteration
         :param M: The solved model
+        :param summarize_output_flow: if True, summarize across season and tod and write to OutputFlowOutSummary table. Else, write to OutputFlowOut table without summarizing.
         :return: None
         """
         flow_data = self.calculate_flows(M=M)
-        self._insert_summary_flow_results(flow_data=flow_data, iteration=iteration)
+        self._insert_summary_flow_results(flow_data=flow_data, iteration=iteration, summarize_output_flow=summarize_output_flow)
 
-    def _insert_summary_flow_results(self, flow_data: dict, iteration: int | None) -> None:
+    def _insert_summary_flow_results(self, flow_data: dict, iteration: int | None, summarize_output_flow: bool) -> None:
         if not self.tech_sectors:
             raise RuntimeError('tech sectors not available... code error')
 
@@ -405,7 +406,8 @@ class TableWriter:
             # get the output flow for this index, if it exists...
             flow_out_value = self.flow_register[fi].get(FlowType.OUT, None)
             if flow_out_value:
-                idx = (scenario, fi.r, sector, fi.p, fi.i, fi.t, fi.v, fi.o)
+                if summarize_output_flow: idx = (scenario, fi.r, sector, fi.p, fi.i, fi.t, fi.v, fi.o) # Sum across season and tod
+                else: idx = (scenario, fi.r, sector, fi.p, fi.s, fi.d, fi.i, fi.t, fi.v, fi.o) # Keep season (fi.s) and tod (fi.d)
                 output_flows[idx] += flow_out_value
 
         # convert to entries, if the sum is non-negligible
@@ -415,8 +417,13 @@ class TableWriter:
                 continue
             entry = (*idx, flow)
             entries.append(entry)
-
-        qry = f'INSERT INTO OutputFlowOutSummary VALUES {_marks(9)}'
+        if summarize_output_flow: 
+            qry = f'INSERT INTO OutputFlowOutSummary VALUES {_marks(9)}'
+        else: 
+            # Delete existing entries for this scenario before inserting
+            self.con.execute(f'DELETE FROM OutputFlowOut WHERE scenario == ?', (scenario,))
+            qry = f'INSERT INTO OutputFlowOut VALUES {_marks(11)}'
+            
         self.con.executemany(qry, entries)
 
         self.con.commit()
